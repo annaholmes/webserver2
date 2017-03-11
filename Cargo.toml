@@ -1,0 +1,6 @@
+[package]
+name = "webserver2"
+version = "0.1.0"
+authors = ["annaholmes <holmesaa@hendrix.edu>"]
+
+[dependencies]
