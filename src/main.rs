@@ -27,11 +27,11 @@ fn main() {
         }
         {
             let total_reqs = total_reqs.lock().unwrap();
-            println!("Total Requests: {}", *total_reqs);
+            //println!("Total Requests: {}", *total_reqs);
         }
         {
             let valid_reqs = valid_reqs.lock().unwrap();
-            println!("Valid Requests: {}", *valid_reqs);
+            //println!("Valid Requests: {}", *valid_reqs);
         }
     }
 }
@@ -39,7 +39,7 @@ fn main() {
 fn handle_client(mut stream: TcpStream, total_reqs: Arc<Mutex<u64>>, valid_reqs: Arc<Mutex<u64>>) {
     match stream.peer_addr() {
         Ok(address) => {
-            println!("Address: {}", address);
+            //println!("Address: {}", address);
             {
                 let mut total_reqs = total_reqs.lock().unwrap();
                 *total_reqs += 1;
@@ -53,51 +53,81 @@ fn handle_client(mut stream: TcpStream, total_reqs: Arc<Mutex<u64>>, valid_reqs:
             let split = s.split("\n");
             let lines = split.collect::<Vec<&str>>();
 
-            let split2 = lines[0].split(" ");
+            let split2 = lines[0].split_whitespace();
+
             let words = split2.collect::<Vec<&str>>();
-            if lines[0].contains("..") {
-                let to_write = format!("HTTP/1.1 403 Forbidden\nContent-Type: text/html; charset=UTF-8\n\n<html>\n
-                <body>\n<h1>403 Forbidden</h1>\nClient address: {add}<br>\nRequested file: {file}<br>\n</body>
-                \n</html><br>",add=address, file=words[1]);
-                let _ = stream.write(to_write.as_bytes());
+            //for w in &words {
+            //    println!("{}", w);
+            //}
+
+            if words.len() < 1 {return;}
+            for w in &words {
+                println!("{}", w);
             }
-            else{
-                if words.len() < 1 {return;}
-                let mut file = String::from(words[1]);
-                if file.len() < 1 {return;}
-                file.remove(0);
-                println!("File: {}", file);
-                match File::open(file) {
-                    Ok(f) => {
-                        let mut valid_reqs = valid_reqs.lock().unwrap();
-                        *valid_reqs += 1; //TODO should this be here?
+            //let mut f = String::from(words[1]);
+            let mut multFiles = words[1].split("/").collect::<Vec<&str>>();
 
-                        let mut write_buf = String::new();
-                        let mut reader = BufReader::new(f);
-                        match reader.read_to_string(&mut write_buf) {
-                            Ok(_) => {},
-                            Err(e) => {println!("Error: {}", e)},
-                        }
-                        let _ = stream.write(write_buf.as_bytes()); // TODO writes, but gives junk
-
-                },
-                    Err(_) => {
-                        let to_write = format!("HTTP/1.1 404 Not Found\nContent-Type: text/html; charset=UTF-8\n\n<html>\n
-                        <body>\n<h1>404 Not Found</h1>\nClient address: {add}<br>\nRequested file: {file}<br>\n</body>
-                        \n</html><br>",add=address, file=words[1]);
-                        let _ = stream.write(to_write.as_bytes());
-                    }
-
+            multFiles.remove(0);
+            //let valid_reqs = Arc::new(Mutex::new(0));
+            let header = "<br>HTTP/1.1\nContent-Type: text/html; charset=UTF-8\n\n<html>\n";
+            let _ = stream.write(header.as_bytes());
+            for file in multFiles {
+                if file.contains("..") {
+                    let to_write = format!(//"<br>HTTP/1.1 403 Forbidden\nContent-Type: text/html; charset=UTF-8\n\n<html>\n
+                    "<body>\n<h1>403 Forbidden</h1>\nClient address: {add}<br>\nRequested file: {file}<br>\n</body>
+                    \n</html><br>",add=address, file=file);
+                    let _ = stream.write(to_write.as_bytes());
                 }
+                else {
+                //thread::spawn(move || {
+                    //println!{"{}, ", file}
+                    if file.len() < 1 {return;}
+                    // removes backslash
+                    //file.remove(0);
+                    println!("Thread spawned: File: {}", file);
+                    match File::open(file) {
+                        Ok(f) => {
+                            let mut valid_reqs = valid_reqs.lock().unwrap();
+                            *valid_reqs += 1; //TODO should this be here?
+
+                            let mut write_buf = String::new();
+                            let mut reader = BufReader::new(f);
+                            match reader.read_to_string(&mut write_buf) {
+                                Ok(_) => {},
+                                Err(e) => {println!("Error: {}", e)},
+                            }
+
+                            let _ = stream.write(write_buf.as_bytes()); // TODO writes, but gives junk
+
+                    },
+                        Err(_) => {
+                            let to_write = format!(//"<br>HTTP/1.1 404 Not Found\nContent-Type: text/html; charset=UTF-8\n\n<html>
+                            "\n<body>\n<h1>404 Not Found</h1>\nClient address: {add}<br>\nRequested file: {file}<br>\n</body>
+                            \n</html><br>\n",add=address, file=file);
+
+                            let _ = stream.write(to_write.as_bytes());
+                        }
+                    }
+                //});
             }
+
+        }
+
         },
         Err(e) => {println!("Error: {}", e);}
     };
 
-
-
-
 }
+
+
+// things to keep in mind:
+        // step 1: unsure if formatting is correct, may have to split on
+        // %0A/ rather than by newline and then / based on the way httperf
+        // translates to this
+        // step 2: files can be written as they are processed! order doesn't matter
+
+
+
 
 
 // sources:
