@@ -49,7 +49,7 @@ fn handle_client(mut stream: TcpStream, total_reqs: Arc<Mutex<u64>>, valid_reqs:
 
             let _ = stream.read(&mut buf); //TODO check output
 
-            let s = from_utf8(&buf).unwrap();
+            let s = from_utf8(&mut buf).unwrap();
             let split = s.split("\n");
             let lines = split.collect::<Vec<&str>>();
 
@@ -69,53 +69,66 @@ fn handle_client(mut stream: TcpStream, total_reqs: Arc<Mutex<u64>>, valid_reqs:
 
             multFiles.remove(0);
             //let valid_reqs = Arc::new(Mutex::new(0));
+
             let header = "<br>HTTP/1.1\nContent-Type: text/html; charset=UTF-8\n\n<html>\n";
             let _ = stream.write(header.as_bytes());
-            for file in multFiles {
-                if file.contains("..") {
-                    let to_write = format!(//"<br>HTTP/1.1 403 Forbidden\nContent-Type: text/html; charset=UTF-8\n\n<html>\n
-                    "<body>\n<h1>403 Forbidden</h1>\nClient address: {add}<br>\nRequested file: {file}<br>\n</body>
-                    \n</html><br>",add=address, file=file);
-                    let _ = stream.write(to_write.as_bytes());
-                }
-                else {
-                //thread::spawn(move || {
-                    //println!{"{}, ", file}
-                    if file.len() < 1 {return;}
-                    // removes backslash
-                    //file.remove(0);
-                    println!("Thread spawned: File: {}", file);
-                    match File::open(file) {
-                        Ok(f) => {
-                            let mut valid_reqs = valid_reqs.lock().unwrap();
-                            *valid_reqs += 1; //TODO should this be here?
-
-                            let mut write_buf = String::new();
-                            let mut reader = BufReader::new(f);
-                            match reader.read_to_string(&mut write_buf) {
-                                Ok(_) => {},
-                                Err(e) => {println!("Error: {}", e)},
-                            }
-
-                            let _ = stream.write(write_buf.as_bytes()); // TODO writes, but gives junk
-
-                    },
-                        Err(_) => {
-                            let to_write = format!(//"<br>HTTP/1.1 404 Not Found\nContent-Type: text/html; charset=UTF-8\n\n<html>
-                            "\n<body>\n<h1>404 Not Found</h1>\nClient address: {add}<br>\nRequested file: {file}<br>\n</body>
-                            \n</html><br>\n",add=address, file=file);
-
-                            let _ = stream.write(to_write.as_bytes());
-                        }
-                    }
-                //});
+            let thisStream = Arc::new(Mutex::new(stream));
+            for f in multFiles {
+                let file = String::from(f);
+                let thisStream = thisStream.clone();
+                thread::spawn(move || {
+                    handle_file(thisStream, &*file, &address);
+                });
             }
-
-        }
 
         },
         Err(e) => {println!("Error: {}", e);}
     };
+
+}
+
+fn handle_file(mut thisStream: Arc<Mutex<TcpStream>>, file: &str, address : &std::net::SocketAddr) {
+    if file.contains("..") {
+        let to_write = format!(//"<br>HTTP/1.1 403 Forbidden\nContent-Type: text/html; charset=UTF-8\n\n<html>\n
+        "<body>\n<h1>403 Forbidden</h1>\nClient address: {add}<br>\nRequested file: {file}<br>\n</body>
+        \n</html><br>",add=address, file=file);
+        let mut thisStream = thisStream.lock().unwrap();
+        let _ = thisStream.write(to_write.as_bytes());
+    }
+    else {
+        //println!{"{}, ", file}
+        if file.len() < 1 {return;}
+        // removes backslash
+        //file.remove(0);
+        println!("Thread spawned: File: {}", file);
+        match File::open(file) {
+            Ok(f) => {
+                //let mut valid_reqs = valid_reqs.lock().unwrap();
+                //*valid_reqs += 1; //TODO should this be here?
+
+                let mut write_buf = String::new();
+                let mut reader = BufReader::new(f);
+                match reader.read_to_string(&mut write_buf) {
+                    Ok(_) => {},
+                    Err(e) => {println!("Error: {}", e)},
+                }
+                let mut thisStream = thisStream.lock().unwrap();
+                let _ = thisStream.write(write_buf.as_bytes());
+                let _ = thisStream.write("<br>\n".as_bytes());
+
+
+        },
+            Err(_) => {
+                let to_write = format!(//"<br>HTTP/1.1 404 Not Found\nContent-Type: text/html; charset=UTF-8\n\n<html>
+                "\n<body>\n<h1>404 Not Found</h1>\nClient address: {add}<br>\nRequested file: {file}<br>\n</body>
+                \n</html><br>\n",add=address, file=file);
+
+                let mut thisStream = thisStream.lock().unwrap();
+                let _ = thisStream.write(to_write.as_bytes());
+            }
+        }
+    }
+
 
 }
 
@@ -125,6 +138,7 @@ fn handle_client(mut stream: TcpStream, total_reqs: Arc<Mutex<u64>>, valid_reqs:
         // %0A/ rather than by newline and then / based on the way httperf
         // translates to this
         // step 2: files can be written as they are processed! order doesn't matter
+        // TODO check up on 'RUST_BACKTRACE=1'
 
 
 
