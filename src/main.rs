@@ -9,7 +9,11 @@ use std::io::BufReader;
 
 fn main() {
     let ip = "127.0.0.1:8888";
-    let listener = TcpListener::bind(ip).unwrap();
+    // on my machine:
+
+    //let listener = TcpListener::bind(ip).unwrap();
+    // other:
+    let listener = TcpListener::bind("0.0.0.0:8888").unwrap();
     let total_reqs = Arc::new(Mutex::new(0));
     let valid_reqs = Arc::new(Mutex::new(0));
     println!("Server started at {}", ip);
@@ -70,7 +74,7 @@ fn handle_client(mut stream: TcpStream, total_reqs: Arc<Mutex<u64>>, valid_reqs:
             multFiles.remove(0);
             //let valid_reqs = Arc::new(Mutex::new(0));
 
-            let header = "<br>HTTP/1.1\nContent-Type: text/html; charset=UTF-8\n\n<html>\n";
+            let header = "HTTP/1.1 200 OK\nContent-Type: text/html; charset=UTF-8\n\n<html>\n";
             let _ = stream.write(header.as_bytes());
             let thisStream = Arc::new(Mutex::new(stream));
             for f in multFiles {
@@ -87,6 +91,13 @@ fn handle_client(mut stream: TcpStream, total_reqs: Arc<Mutex<u64>>, valid_reqs:
 
 }
 
+/*for prioritization of threads:
+  don't even start thread for large request until you're done with queue of short requests
+
+
+    set up queue of short requests, get through that then look at longer one*/
+
+
 fn handle_file(mut thisStream: Arc<Mutex<TcpStream>>, file: &str, address : &std::net::SocketAddr) {
     if file.contains("..") {
         let to_write = format!(//"<br>HTTP/1.1 403 Forbidden\nContent-Type: text/html; charset=UTF-8\n\n<html>\n
@@ -101,11 +112,12 @@ fn handle_file(mut thisStream: Arc<Mutex<TcpStream>>, file: &str, address : &std
         // removes backslash
         //file.remove(0);
         println!("Thread spawned: File: {}", file);
+	
         match File::open(file) {
             Ok(f) => {
                 //let mut valid_reqs = valid_reqs.lock().unwrap();
                 //*valid_reqs += 1; //TODO should this be here?
-
+		
                 let mut write_buf = String::new();
                 let mut reader = BufReader::new(f);
                 match reader.read_to_string(&mut write_buf) {
@@ -134,15 +146,36 @@ fn handle_file(mut thisStream: Arc<Mutex<TcpStream>>, file: &str, address : &std
 
 
 // things to keep in mind:
+
         // step 1: unsure if formatting is correct, may have to split on
         // %0A/ rather than by newline and then / based on the way httperf
         // translates to this
+
         // step 2: files can be written as they are processed! order doesn't matter
-        // TODO check up on 'RUST_BACKTRACE=1'
+
+        // TODO check up on some random thread panicking at an
+        // index out of bounds error 'RUST_BACKTRACE=1'
+	
+	// this vers d
 
 
+/*        webserver #2
 
+        2. why does this matter?
+            -you might be running on multiple cores
+            -a lot of things waiting can get blocked by i/o (read from disk etc)
+            if you do one thread for each, it has an opportunity to make progress despite block
+            -order doesn't matter
 
+        3. httperf?
+              sends as many http requests as you want to a targeted machine &
+                report statistical info about how it performed
+              come up with workloads that can stress test in different ways
+
+        pick 3+
+        -have multiple listeners
+        -
+*/
 
 // sources:
 // https://steemit.com/rust-series/@jimmco/rust-lang-series-episode-33-tcp-client-rust-series
